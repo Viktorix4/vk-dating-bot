@@ -1,13 +1,18 @@
-# src/bot.py
+"""
+Чат-бот для знакомств в ВКонтакте.
+"""
+
 import os
 import random
 from dotenv import load_dotenv
 import vk_api
 from vk_api.longpoll import VkLongPoll, VkEventType
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
+
 from src.vk_client import VKClient
 from src.storage import add_to_favorites, get_favorites
 
+# Загрузка токенов
 load_dotenv()
 GROUP_TOKEN = os.getenv("VK_GROUP_TOKEN")
 USER_TOKEN = os.getenv("VK_USER_TOKEN")
@@ -21,18 +26,7 @@ vk_send = vk_group.get_api()
 longpoll = VkLongPoll(vk_group)
 vk_search = VKClient(USER_TOKEN)
 
-# Хранилище состояний: {user_id: {"params": ..., "current": {...}}}
 user_sessions = {}
-
-
-def send_msg(user_id, message, attachment=""):
-    vk_send.messages.send(
-        user_id=user_id,
-        message=message,
-        attachment=attachment,
-        random_id=random.randint(1, 10**9),
-        keyboard=get_keyboard()
-    )
 
 
 def get_keyboard():
@@ -44,7 +38,20 @@ def get_keyboard():
     return kb.get_keyboard()
 
 
-def handle_start(user_id):
+def send_msg(user_id: int, message: str, attachment: str = ""):
+    try:
+        vk_send.messages.send(
+            user_id=user_id,
+            message=message,
+            attachment=attachment,
+            random_id=random.randint(1, 10**9),
+            keyboard=get_keyboard()
+        )
+    except Exception as e:
+        print(f"Ошибка отправки {user_id}: {e}")
+
+
+def handle_start(user_id: int):
     try:
         info = vk_search.get_user_info(user_id)
         bdate = info.get("bdate", "")
@@ -60,28 +67,34 @@ def handle_start(user_id):
             return
 
         search_sex = 1 if info["sex"] == 2 else 2
+
         user_sessions[user_id] = {
             "params": {"age": age, "city_id": city_id, "sex": search_sex},
+            "offset": 0,
             "current": None
         }
         send_msg(user_id, "Подбираю анкеты...")
         show_next(user_id)
     except Exception as e:
-        send_msg(user_id, "Ошибка при получении данных. Проверьте настройки профиля.")
+        print(f"Ошибка старта {user_id}: {e}")
+        send_msg(user_id, "Ошибка профиля. Проверьте настройки.")
 
 
-def show_next(user_id):
+def show_next(user_id: int):
     session = user_sessions.get(user_id)
     if not session:
         handle_start(user_id)
         return
 
     params = session["params"]
+    offset = session["offset"]
+
     candidates = vk_search.search_users(
         age_from=params["age"] - 2,
         age_to=params["age"] + 2,
         sex=params["sex"],
-        city_id=params["city_id"]
+        city_id=params["city_id"],
+        offset=offset
     )
 
     if not candidates:
@@ -99,13 +112,14 @@ def show_next(user_id):
         "profile_url": profile_url,
         "photos": photos
     }
+    user_sessions[user_id]["offset"] = offset + 1
 
     msg = f"{candidate['first_name']} {candidate['last_name']}\n{profile_url}"
     att = ",".join(photos) if photos else ""
     send_msg(user_id, msg, att)
 
 
-def handle_add_favorite(user_id):
+def handle_add_favorite(user_id: int):
     current = user_sessions.get(user_id, {}).get("current")
     if not current:
         send_msg(user_id, "Нет текущей анкеты.")
@@ -114,19 +128,19 @@ def handle_add_favorite(user_id):
     send_msg(user_id, "✅ Добавлено в избранное!")
 
 
-def handle_show_favorites(user_id):
-    favs = get_favorites()
-    if not favs:
+def handle_show_favorites(user_id: int):
+    favorites = get_favorites()
+    if not favorites:
         send_msg(user_id, "Избранных нет.")
         return
     msg = "❤️ Избранные:\n"
-    for f in favs[-5:]:
+    for f in favorites[-5:]:
         msg += f"- {f['first_name']} {f['last_name']}\n{f['profile_url']}\n\n"
     send_msg(user_id, msg)
 
 
 def main():
-    print("✅ Бот запущен. Ожидание сообщений...")
+    print("✅ Бот запущен. Напишите ему в группу ВКонтакте!")
     for event in longpoll.listen():
         if event.type == VkEventType.MESSAGE_NEW and event.to_me:
             uid = event.user_id
