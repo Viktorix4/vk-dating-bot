@@ -110,6 +110,7 @@ python -m src.bot
 
 ## Структура проекта
 
+```
 vk-dating-bot/
 ├── .env.example             # Шаблон для .env
 ├── README.md                # Документация
@@ -120,7 +121,7 @@ vk-dating-bot/
     ├── bot.py               # Основной цикл бота
     ├── vk_client.py         # Работа с VK API
     └── storage.py           # Сохранение избранных
-
+```
 
 ## Лицензия
 
